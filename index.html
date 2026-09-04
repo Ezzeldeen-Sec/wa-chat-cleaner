@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; media-src 'none'; worker-src 'none'; font-src 'self' data:; base-uri 'self'; object-src 'none'; form-action 'self';" />
+    <title>WhatsApp Chat Cleaner &amp; Formatter</title>
+    <!--
+      خصوصية: الصفحة دي شغالة بالكامل من عندك (client-side) وملهاش أي backend.
+      الطلب الشبكي الوحيد اللي بيحصل هو تحميل مكتبة Tailwind CSS من الـ CDN بتاعها
+      عشان التنسيق بس، ومفيهوش أي نص شات أو اسم أو بيانات بتاعتك بترسل لأي حد.
+      اللي بيتحفظ محلي (localStorage) هو تفضيلات الواجهة بس (الوضع الداكن/اللغة/العرض)
+      مش محتوى المحادثة نفسه.
+    -->
+    <!-- تهيئة Tailwind والوضع الداكن قبل التحميل لمنع الوميض -->
+    <script>
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = { darkMode: "class" };
+      // بعض المتصفحات أو أوضاع الخصوصية بتمنع الوصول لـ localStorage وترمي error،
+      // فبنحوط العملية دي عشان أي منع للتخزين ميوقفش تحميل الصفحة أو يكسر الوضع الداكن/الفاتح.
+      try {
+        // Dark mode is the default. Only an explicit saved "0" switches to Light Mode.
+        if (localStorage.getItem("wc_dark") !== "0") {
+          document.documentElement.classList.add("dark");
+          document.documentElement.dataset.theme = "dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      } catch (_) {
+        // If storage is unavailable, keep the dark default.
+        document.documentElement.classList.add("dark");
+        document.documentElement.dataset.theme = "dark";
+        document.documentElement.style.colorScheme = "dark";
+      }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      :root { color-scheme: dark; }
+      html.dark { color-scheme: dark; }
+      html[data-theme="light"] { color-scheme: light; }
+
+      /* Strong, readable Light Mode palette with explicit contrast. */
+      html[data-theme="light"] body { background: #f1f5f9 !important; color: #0f172a !important; }
+      html[data-theme="light"] .app-header,
+      html[data-theme="light"] .control-card,
+      html[data-theme="light"] .preview-panel { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07) !important; }
+      html[data-theme="light"] .text-slate-500 { color: #475569 !important; }
+      html[data-theme="light"] .text-slate-600 { color: #334155 !important; }
+      html[data-theme="light"] .text-slate-700 { color: #1e293b !important; }
+      html[data-theme="light"] textarea::placeholder { color: #64748b !important; opacity: 1 !important; }
+      html[data-theme="light"] textarea,
+      html[data-theme="light"] select,
+      html[data-theme="light"] input[type="text"] { background: #ffffff !important; }
+      html[data-theme="light"] .border-slate-200 { border-color: #cbd5e1 !important; }
+      html[data-theme="light"] .border-slate-300 { border-color: #94a3b8 !important; }
+      html[data-theme="light"] #chatCanvas { background: #e8edf1 !important; }
+      html[data-theme="light"] #rawTextView { background: #ffffff !important; }
+
+      /* Explicit preview bubble colors: prevents utility-class/theme state conflicts. */
+      html[data-theme="light"] .incoming-bubble {
+        background: #ffffff !important;
+        color: #1f2937 !important;
+        border-color: #cbd5e1 !important;
+      }
+      html[data-theme="light"] .incoming-bubble [contenteditable="true"] {
+        color: #1f2937 !important;
+      }
+      html[data-theme="light"] .outgoing-bubble {
+        background: #176b50 !important;
+        color: #ffffff !important;
+        border-color: #176b50 !important;
+      }
+      html[data-theme="light"] .outgoing-bubble [contenteditable="true"] {
+        color: #ffffff !important;
+      }
+      html[data-theme="light"] .outgoing-bubble .text-emerald-800 {
+        color: #a7f3d0 !important;
+      }
+      html[data-theme="light"] .outgoing-bubble .text-slate-500 {
+        color: rgba(255,255,255,.72) !important;
+      }
+      html[data-theme="dark"] .incoming-bubble,
+      html.dark .incoming-bubble {
+        background: #1a2520 !important;
+        color: #f3f4f6 !important;
+        border-color: #22332b !important;
+      }
+      html[data-theme="dark"] .outgoing-bubble,
+      html.dark .outgoing-bubble {
+        background: #115e41 !important;
+        color: #f3f4f6 !important;
+        border-color: #147a54 !important;
+      }
+      html[data-theme="light"] button:focus-visible,
+      html[data-theme="light"] input:focus-visible,
+      html[data-theme="light"] select:focus-visible,
+      html[data-theme="light"] textarea:focus-visible { outline: 3px solid rgba(5, 150, 105, 0.28) !important; outline-offset: 2px; }
+
+
+      /* Secondary actions: intentionally distinct from disabled controls. */
+      .secondary-action {
+        background: #ecfdf5 !important;
+        color: #065f46 !important;
+        border: 1px solid #6ee7b7 !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 2px rgba(6, 95, 70, 0.08) !important;
+      }
+      .secondary-action:hover {
+        background: #d1fae5 !important;
+        color: #064e3b !important;
+        border-color: #34d399 !important;
+      }
+      .secondary-action:active { transform: translateY(1px); }
+      .secondary-action:focus-visible {
+        outline: 3px solid rgba(16, 185, 129, 0.25) !important;
+        outline-offset: 2px !important;
+      }
+      html.dark .secondary-action {
+        background: #172b23 !important;
+        color: #a7f3d0 !important;
+        border-color: #3f6b57 !important;
+        box-shadow: none !important;
+      }
+      html.dark .secondary-action:hover {
+        background: #1f3a2f !important;
+        color: #d1fae5 !important;
+        border-color: #52e8ad !important;
+      }
+
+      /* Modern collapsible secondary controls. */
+      .options-accordion {
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        border-radius: 1rem;
+        background: #ffffff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      }
+      .options-accordion summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.95rem 1rem;
+        cursor: pointer;
+        list-style: none;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #0f172a;
+        background: #ffffff;
+        transition: background-color 0.2s ease, color 0.2s ease;
+      }
+      .options-accordion summary::-webkit-details-marker { display: none; }
+      .options-accordion summary:hover { background: #f8fafc; color: #065f46; }
+      .options-accordion summary:focus-visible { outline: 3px solid rgba(16, 185, 129, 0.25); outline-offset: -3px; }
+      .options-summary-label { letter-spacing: 0.01em; }
+      .options-chevron {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        flex: 0 0 2rem;
+        border: 1px solid #d1fae5;
+        border-radius: 0.7rem;
+        background: #f0fdf4;
+        color: #047857;
+        box-shadow: 0 1px 2px rgba(6, 95, 70, 0.05);
+        transition: transform 0.24s cubic-bezier(.2,.8,.2,1), background-color 0.2s ease, border-color 0.2s ease;
+      }
+      .options-chevron svg { width: 1rem; height: 1rem; }
+      .options-accordion:hover .options-chevron { background: #dcfce7; border-color: #a7f3d0; }
+      .options-accordion[open] .options-chevron { transform: rotate(180deg); background: #d1fae5; border-color: #86efac; }
+      .options-content {
+        padding: 0 0.75rem 0.75rem;
+        border-top: 1px solid #e2e8f0;
+      }
+      .options-content > .control-card { margin-top: 0.75rem; }
+      html.dark .options-accordion {
+        background: #111915;
+        border-color: #26382f;
+        box-shadow: none;
+      }
+      html.dark .options-accordion summary { background: #111915; color: #e5e7eb; }
+      html.dark .options-accordion summary:hover { background: #15201b; color: #a7f3d0; }
+      html.dark .options-chevron { background: #172b23; border-color: #2f5543; color: #a7f3d0; box-shadow: none; }
+      html.dark .options-accordion:hover .options-chevron { background: #1d3429; border-color: #3f6b57; }
+      html.dark .options-accordion[open] .options-chevron { background: #1f3a2f; border-color: #3f6b57; }
+      html.dark .options-content { border-color: #26382f; }
+      html[data-theme="light"] .options-accordion { background: #ffffff !important; border-color: #cbd5e1 !important; }
+      html[data-theme="light"] .options-accordion summary { background: #ffffff !important; color: #0f172a !important; }
+      html[data-theme="light"] .options-content { border-color: #e2e8f0 !important; }
+
+      /* Clear desktop/mobile separation */
+      @media (min-width: 768px) {
+        .app-grid {
+          display: grid !important;
+          grid-template-columns: minmax(360px, 0.92fr) minmax(0, 1.08fr);
+          align-items: start;
+        }
+        .preview-panel { position: sticky; top: 1rem; }
+      }
+
+      @media (max-width: 767px) {
+        html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+        .app-shell {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 auto !important;
+          padding: 0.75rem !important;
+          overflow-x: hidden;
+        }
+        .app-header { border-radius: 1rem !important; padding: 1rem !important; }
+        .app-header h1 { font-size: 1.05rem; line-height: 1.35; }
+        .app-header p { font-size: 0.78rem; line-height: 1.5; }
+        .app-grid { display: block !important; width: 100%; min-width: 0; }
+        .app-grid > * { width: 100%; min-width: 0; }
+        .app-grid > * + * { margin-top: 0.9rem; }
+        .control-card, .preview-panel { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; border-radius: 1rem !important; padding: 1rem !important; }
+        .options-accordion { width: 100%; max-width: 100%; box-sizing: border-box; border-radius: 1rem; }
+        .options-accordion summary { padding: 0.95rem 1rem; }
+        #rawInput { min-height: 220px; max-height: 46vh; font-size: 16px; line-height: 1.5; }
+        .quick-actions { display: grid !important; grid-template-columns: 1fr 1fr; width: 100%; }
+        #batchAnonBtn { grid-column: 1 / -1; }
+        #parseBtn, #clearBtn, #resetNamesBtn, #copyBtn, #downloadBtn { justify-content: center; min-width: 0; }
+        .canvas-toolbar { align-items: stretch !important; }
+        .canvas-toolbar > div { width: 100%; min-width: 0; justify-content: space-between; }
+        .canvas-toolbar .inline-flex { flex: 1; min-width: 0; }
+        .canvas-toolbar .inline-flex button { flex: 1; min-width: 0; }
+        .canvas-width-row { display: none !important; }
+        #canvasContainer { width: 100% !important; max-width: 430px; margin-inline: auto; }
+        #chatCanvas, #rawTextView { max-height: 62vh; padding: 0.75rem; border-radius: 1rem; }
+        .message-bubble { max-width: 88% !important; }
+        .preview-actions { flex-direction: column; }
+        .preview-actions button { width: 100%; }
+      }
+
+
+      /* Sender ordering: the first sender is the main/outgoing user. */
+      .sender-row { position: relative; transition: transform .16s ease, border-color .16s ease, background-color .16s ease; }
+      .sender-row.drag-over { border-color: #34d399 !important; background: rgba(16,185,129,.06) !important; }
+      .sender-drag-handle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 2rem; height: 2rem; flex: 0 0 2rem;
+        border-radius: .45rem; border: 1px solid transparent;
+        color: #94a3b8; cursor: grab;
+        -webkit-user-select: none; user-select: none;
+      }
+      .sender-drag-handle:hover { color: #047857; }
+      .sender-drag-handle:active { cursor: grabbing; }
+      .main-user-badge {
+        display: inline-flex; align-items: center; gap: .35rem;
+        padding: .22rem .5rem; border-radius: 999px;
+        background: #ecfdf5; border: 1px solid #a7f3d0;
+        color: #047857; font-size: .65rem; font-weight: 800;
+        letter-spacing: .06em; text-transform: uppercase;
+      }
+
+      /* Keep long URLs inside chat bubbles and preserve readable mixed Arabic/Latin text. */
+      .message-bubble,
+      .message-bubble > div,
+      .message-bubble [contenteditable="true"] {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .message-bubble [contenteditable="true"] {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        unicode-bidi: plaintext;
+      }
+
+      /* The visual six-dot handle stays small, but its hit area is intentionally generous. */
+      .sender-drag-handle {
+        position: relative;
+        touch-action: none;
+        -webkit-touch-callout: none;
+      }
+      .sender-drag-handle::before {
+        content: "";
+        position: absolute;
+        inset: -.45rem;
+        border-radius: .7rem;
+      }
+      .sender-drag-handle.is-dragging {
+        color: #10b981;
+        cursor: grabbing;
+      }
+      html.dark .main-user-badge { background: #173529; border-color: #2f6a51; color: #86efac; }
+
+      @media (max-width: 767px) {
+        .app-header > div { width: 100%; min-width: 0; }
+        .app-header h1, .app-header p { overflow-wrap: anywhere; }
+        .app-header .self-start { width: 100%; flex-wrap: wrap; }
+        #darkModeToggle { flex: 1 1 auto; min-width: 0; }
+        #languageToggle { flex: 0 0 auto; min-width: 4rem; }
+        .sender-row { padding: .65rem !important; min-width: 0; overflow: hidden; }
+        .sender-row .sender-top-row {
+          min-width: 0;
+          flex-wrap: wrap;
+          gap: .35rem !important;
+          padding: .25rem .35rem;
+          margin: -.25rem -.35rem .35rem;
+          border-radius: .55rem;
+          cursor: grab;
+          touch-action: manipulation;
+        }
+        .sender-row .sender-top-row:active { cursor: grabbing; }
+        .sender-top-row .text-xs { min-width: 0; overflow-wrap: anywhere; }
+        .sender-drag-handle {
+          width: 2rem; height: 2rem; flex-basis: 2rem;
+          margin: 0; font-size: 1rem;
+        }
+        .main-user-badge { flex: 0 0 auto; }
+      }
+
+      /* Explicit theme fallback: this makes Light Mode independent of OS color preference. */
+      html[data-theme="light"], html[data-theme="light"] body { color-scheme: light; background: #f8fafc !important; color: #0f172a !important; }
+      html[data-theme="light"] .app-header,
+      html[data-theme="light"] .control-card,
+      html[data-theme="light"] .preview-panel { background: #ffffff !important; border-color: #e2e8f0 !important; color: #0f172a !important; }
+      html[data-theme="light"] textarea,
+      html[data-theme="light"] select,
+      html[data-theme="light"] #rawTextView { background: #f8fafc !important; color: #0f172a !important; border-color: #cbd5e1 !important; }
+      html[data-theme="light"] #chatCanvas { background: #efeae2 !important; border-color: #e2e8f0 !important; }
+      html[data-theme="light"] .dark\:bg-\[\#0a0f0d\],
+      html[data-theme="light"] .dark\:bg-\[\#111915\],
+      html[data-theme="light"] .dark\:bg-\[\#090e0c\],
+      html[data-theme="light"] .dark\:bg-\[\#1a2520\] { background-color: initial !important; }
+      html[data-theme="light"] .dark\:text-gray-200,
+      html[data-theme="light"] .dark\:text-gray-300,
+      html[data-theme="light"] .dark\:text-gray-400 { color: inherit !important; }
+
+    
+      /* Mobile editing: leave breathing room around the active message. */
+      @media (max-width: 768px) {
+        .message-bubble [contenteditable="true"] {
+          scroll-margin-top: 96px;
+          scroll-margin-bottom: 42vh;
+        }
+      }
+
+/* About button + modal */
+.header-icon-btn{
+  width:40px;height:40px;border-radius:12px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);display:inline-flex;
+  align-items:center;justify-content:center;font-weight:800;font-size:18px;
+  cursor:pointer;transition:.2s ease;line-height:1;
+}
+.header-icon-btn:hover{transform:translateY(-1px);border-color:var(--accent);color:var(--accent)}
+.header-icon-btn span{
+  width:20px;height:20px;border:1.8px solid currentColor;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:Georgia,serif;font-size:14px;font-style:italic;
+}
+.about-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);
+  z-index:9999;display:flex;align-items:center;justify-content:center;
+  padding:20px;opacity:0;visibility:hidden;transition:.2s ease;
+}
+.about-overlay.is-open{opacity:1;visibility:visible}
+.about-modal{
+  width:min(520px,100%);max-height:min(720px,calc(100dvh - 40px));overflow:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:22px;
+  box-shadow:0 24px 80px rgba(0,0,0,.28);padding:26px;
+  transform:translateY(10px) scale(.98);transition:.2s ease;
+}
+.about-overlay.is-open .about-modal{transform:translateY(0) scale(1)}
+.about-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+.about-modal-title{font-size:21px;font-weight:800;margin:0;color:var(--text)}
+.about-close{
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;
+}
+.about-close:hover{color:var(--text);border-color:var(--accent)}
+.about-intro{color:var(--muted);line-height:1.7;margin:0 0 18px}
+.about-list{display:grid;gap:10px;margin:0 0 22px;padding:0;list-style:none}
+.about-list li{padding:11px 13px;border:1px solid var(--border);border-radius:12px;color:var(--text);background:var(--surface-2)}
+.about-list li::before{content:"✓";color:var(--accent);font-weight:800;margin-right:10px}
+.about-privacy{padding:15px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,transparent);border:1px solid color-mix(in srgb,var(--accent) 25%,var(--border));margin-bottom:22px}
+.about-privacy strong{display:block;margin-bottom:6px;color:var(--text)}
+.about-privacy p{margin:0;color:var(--muted);line-height:1.6}
+.about-credit{border-top:1px solid var(--border);padding-top:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.about-credit-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.about-name{font-size:20px;font-weight:900;letter-spacing:.06em;color:var(--accent)}
+[dir="rtl"] .about-list li::before{margin-right:0;margin-left:10px}
+[dir="rtl"] .about-credit-label{text-transform:none;letter-spacing:0}
+
+.github-link{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-weight:700;transition:.2s ease}
+.github-link:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+@media (max-width:768px){
+  .header-icon-btn{width:42px;height:42px}
+  .about-overlay{padding:14px;align-items:flex-end}
+  .about-modal{border-radius:22px 22px 18px 18px;padding:22px;max-height:82dvh}
+}
+
+</style>
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200 dark:bg-[#0a0f0d] dark:text-gray-200">
+    <div class="app-shell mx-auto max-w-7xl p-4 lg:p-6">
+      <!-- Header -->
+      <header class="app-header mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-[#1d2b24] dark:bg-[#111915]">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 id="appTitle" class="text-xl font-bold" data-i18n="appTitle">WhatsApp Chat Cleaner &amp; Formatter</h1>
+            <p id="appSubtitle" class="mt-1 text-sm text-slate-500 dark:text-gray-400" data-i18n="appSubtitle">
+              Paste exported chat text, parse, edit, anonymize, and export cleaned output.
+            </p>
+          </div>
+          <div class="flex items-center gap-2 self-start header-actions">
+            <button id="darkModeToggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-[#26382f] dark:bg-[#0a0f0d] dark:text-gray-300 dark:hover:bg-[#15201b]">
+              <span id="darkModeIcon" aria-hidden="true">◐</span>
+              <span id="darkModeText" data-i18n="darkMode">Dark Mode</span>
+            </button>
+            <button id="languageToggle" type="button" class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-[#26382f] dark:bg-[#0a0f0d] dark:text-gray-300 dark:hover:bg-[#15201b]">
+              AR
+            </button>
+<button id="aboutBtn" class="header-icon-btn" type="button" aria-label="About this project" title="About">
+  <span aria-hidden="true">i</span>
+</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="app-grid grid gap-4 md:grid-cols-2">
+        <!-- Left Panel (Controls & Input) -->
+        <section class="space-y-4">
+          <!-- Raw Input -->
+          <div class="control-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-[#1d2b24] dark:bg-[#111915]">
+            <label for="rawInput" class="mb-2 block text-sm font-semibold" data-i18n="rawExport">Raw WhatsApp Export</label>
+            <textarea
+              id="rawInput"
+              rows="12"
+              class="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-[#26382f] dark:bg-[#0a0f0d] dark:text-gray-200 dark:placeholder-gray-600 dark:focus:border-emerald-600"
+              data-i18n-placeholder="rawPlaceholder"
+              placeholder="[12/8/24, 9:12:02 PM] Mohamed: Hello&#10;[12/8/24, 9:12:12 PM] Ahmed: مرحباً"
+            ></textarea>
+            <div class="mt-3 flex flex-wrap gap-2 quick-actions">
+              <button id="parseBtn" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 dark:bg-[#147a54] dark:hover:bg-[#106b48]" data-i18n="parseChat">Force Parse</button>
+              <button id="clearBtn" class="secondary-action rounded-lg px-3 py-2 text-sm transition" data-i18n="clear">Clear</button>
+              <button id="batchAnonBtn" class="rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700 dark:bg-teal-700 dark:hover:bg-teal-800" data-i18n="batchAnonymize">Batch Anonymize</button>
+            </div>
+          </div>
+
+          <!-- Secondary options: open by default, with the user's preference remembered. -->
+          <details id="optionsAccordion" class="options-accordion" open>
+            <summary>
+              <span class="options-summary-label" data-i18n="moreOptions">More Options</span>
+              <span class="options-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </span>
+            </summary>
+            <div class="options-content">
+          <!-- Anonymization -->
+          <div class="control-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-[#1d2b24] dark:bg-[#111915]">
+            <div class="mb-3 flex flex-wrap gap-2">
+              <button id="resetNamesBtn" class="secondary-action rounded-lg px-3 py-2 text-sm transition" data-i18n="resetNames">Reset Names</button>
+            </div>
+            <h2 class="mb-1 text-sm font-semibold" data-i18n="anonymization">Anonymization</h2>
+            <p class="mb-2 text-xs text-slate-500 dark:text-gray-500" data-i18n="detectedSenders">Detected senders with editable display names.</p>
+            <div id="senderList" class="space-y-2 text-sm text-slate-600 dark:text-gray-400"></div>
+          </div>
+
+
+          <!-- Formatting -->
+          <div class="control-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-[#1d2b24] dark:bg-[#111915]">
+            <h2 class="mb-3 text-sm font-semibold" data-i18n="formattingControls">Formatting Controls</h2>
+            <div class="space-y-3">
+              <!-- Important quick setting first -->
+              <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-sm transition-colors dark:border-[#26382f]">
+                <span data-i18n="showTimestamps">Show Timestamps & Dates</span>
+                <input id="toggleTimestamp" type="checkbox" class="h-4 w-4 accent-emerald-600" />
+              </label>
+
+              <!-- Secondary formatting choice moved below -->
+              <div class="border-t border-slate-200 pt-3 dark:border-[#26382f]">
+                <label for="presetSelect" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500" data-i18n="preset">Preset</label>
+                <select id="presetSelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-[#26382f] dark:bg-[#0a0f0d] dark:text-gray-200 dark:focus:border-emerald-600">
+                  <option value="enhanced" data-i18n="enhancedSeparated">Enhanced (Separated)</option>
+                  <option value="normal" data-i18n="normalLikeWhatsapp">Normal (Like WhatsApp)</option>
+                </select>
+              </div>
+            </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Right Panel (Canvas) -->
+        <section>
+          <div class="preview-panel relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-[#1d2b24] dark:bg-[#111915]" dir="ltr">
+            <h2 class="mb-3 text-sm font-semibold" data-i18n="interactiveCanvas">Interactive Chat Canvas</h2>
+
+            <div class="canvas-toolbar mb-4 space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500" data-i18n="view">View</span>
+                  <div class="inline-flex rounded-lg border border-slate-300 p-1 dark:border-[#26382f] dark:bg-[#0a0f0d]">
+                    <button id="chatViewBtn" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition" data-i18n="chatView">Chat View</button>
+                    <button id="rawViewBtn" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition" data-i18n="rawTextView">Raw Text View</button>
+                  </div>
+                </div>
+
+                <div class="hidden items-center gap-2 md:flex">
+                  <span class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500" data-i18n="width">Width</span>
+                  <div class="inline-flex rounded-lg border border-slate-300 p-1 dark:border-[#26382f] dark:bg-[#0a0f0d]">
+                    <button id="mobileWidthBtn" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition" data-i18n="mobileView">Mobile View</button>
+                    <button id="fullWidthBtn" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition" data-i18n="fullWidth">Full Width</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Smooth Percentage-based Slider -->
+              <div class="canvas-width-row flex items-center gap-3">
+                <label for="widthSlider" class="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500" data-i18n="canvasWidth">Canvas Width</label>
+                <input id="widthSlider" type="range" min="60" max="100" value="100" class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-emerald-600 dark:bg-[#26382f]" />
+                <span id="widthValue" class="w-12 text-right text-xs font-mono text-slate-500 dark:text-gray-400">100%</span>
+              </div>
+            </div>
+
+            <div id="canvasContainer" class="mx-auto w-full transition-all duration-75">
+              <!-- WhatsApp Style Chat Bubbles -->
+              <div id="chatCanvas" class="max-h-[75vh] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-[#efeae2] p-4 dark:border-[#1d2b24] dark:bg-[#090e0c]" dir="ltr"></div>
+              <!-- Raw Text Output -->
+              <pre id="rawTextView" class="hidden max-h-[75vh] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed whitespace-pre-wrap dark:border-[#1d2b24] dark:bg-[#0a0f0d] dark:text-gray-300" dir="ltr"></pre>
+            </div>
+
+            <!-- Export actions intentionally placed directly under the preview -->
+            <div class="preview-actions mt-3 flex flex-wrap gap-2">
+              <button id="copyBtn" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 dark:bg-[#147a54] dark:hover:bg-[#106b48]" data-i18n="copyCleanedText">Copy Cleaned Text</button>
+              <button id="downloadBtn" class="rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700" data-i18n="downloadTxt">Download as TXT</button>
+            </div>
+            <p id="feedback" class="mt-2 text-xs text-slate-500 dark:text-gray-500"></p>
+            
+            <div id="contextMenu" class="absolute z-20 hidden min-w-44 rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-[#26382f] dark:bg-[#111915]"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      // 1. Translations (i18n)
+      const i18n = {
+        en: {
+          appTitle: "WhatsApp Chat Cleaner & Formatter",
+          appSubtitle: "Paste exported chat text, parse, edit, anonymize, and export cleaned output.",
+          darkMode: "Dark Mode",
+          lightMode: "Light Mode",
+          rawExport: "Raw WhatsApp Export",
+          rawPlaceholder: "[12/8/24, 9:12:02 PM] Mohamed: Hello\n[12/8/24, 9:12:12 PM] Ahmed: مرحباً",
+          parseChat: "Force Parse",
+          clear: "Clear",
+          moreOptions: "More Options",
+          formattingControls: "Formatting Controls",
+          preset: "Preset",
+          enhancedSeparated: "Enhanced (Separated)",
+          normalLikeWhatsapp: "Normal (Like WhatsApp)",
+          showTimestamps: "Show Timestamps & Dates",
+          batchAnonymize: "Batch Anonymize",
+          resetNames: "Reset Names",
+          anonymization: "Anonymization",
+          detectedSenders: "Detected senders with editable display names.",
+          noSenders: "No senders detected yet.",
+          copyCleanedText: "Copy Cleaned Text",
+          downloadTxt: "Download as TXT",
+          interactiveCanvas: "Interactive Chat Canvas",
+          view: "View",
+          chatView: "Chat View",
+          rawTextView: "Raw Text View",
+          width: "Width",
+          mobileView: "Mobile View",
+          fullWidth: "Full Width",
+          canvasWidth: "Canvas Width",
+          noMessages: "No parsed messages yet.",
+          parsedMessages: "Parsed {count} message(s).",
+          cleared: "Cleared input and output.",
+          copied: "Cleaned text copied to clipboard.",
+          copyFailed: "Clipboard copy failed. Please copy manually.",
+          downloadStarted: "TXT download started.",
+          hidden: "(hidden)",
+          rawSender: "Raw: {sender}",
+          dragToReorder: "Drag to reorder users",
+          mainUser: "MAIN",
+          mainUserHint: "Top person appears on the right side of the chat preview",
+          menuEdit: "Edit text",
+          menuDeleteMessage: "Delete message",
+          menuAnonymizeSender: "Anonymize this sender",
+          menuHideSender: "Hide sender name",
+          menuHideAllTimestamps: "Hide all timestamps",
+          menuDeleteTimestamp: "Delete this timestamp",
+          about: "About",
+          aboutProject: "About This Project",
+          aboutIntro: "WhatsApp Chat Cleaner & Formatter is a browser-based tool designed to clean, organize, anonymize, and preview exported WhatsApp conversations.",
+          aboutFeature1: "Clean and format exported chat text",
+          aboutFeature2: "Edit messages and sender names",
+          aboutFeature3: "Anonymize participants for safer sharing",
+          aboutFeature4: "Preview conversations before exporting",
+          aboutFeature5: "Copy or download the cleaned result",
+          privacyFirst: "Privacy First",
+          privacyText: "Your chat data is processed locally in your browser and is not uploaded to a server.",
+          createdBy: "Created by",
+          close: "Close",
+        },
+        ar: {
+          appTitle: "منظف ومنسق محادثات واتساب",
+          appSubtitle: "الصق نص المحادثة، سيتم تحليلها تلقائياً. حرر وأخفِ الهوية وصدّر النسخة المنظفة.",
+          darkMode: "الوضع الداكن",
+          lightMode: "الوضع الفاتح",
+          rawExport: "نص واتساب الخام",
+          rawPlaceholder: "[12/8/24, 9:12:02 PM] Mohamed: Hello\n[12/8/24, 9:12:12 PM] Ahmed: مرحباً",
+          parseChat: "تحديث يدوي",
+          clear: "مسح",
+          moreOptions: "خيارات إضافية",
+          formattingControls: "إعدادات التنسيق",
+          preset: "النمط",
+          enhancedSeparated: "محسّن (منفصل)",
+          normalLikeWhatsapp: "عادي (مثل واتساب)",
+          showTimestamps: "إظهار التاريخ والوقت",
+          batchAnonymize: "إخفاء هوية الكل",
+          resetNames: "إعادة الأسماء",
+          anonymization: "إخفاء الهوية",
+          detectedSenders: "الأطراف المكتشفة مع إمكانية التعديل السحب والإفلات.",
+          noSenders: "لا توجد أطراف مكتشفة بعد.",
+          copyCleanedText: "نسخ النص المنظف",
+          downloadTxt: "تنزيل كملف TXT",
+          interactiveCanvas: "لوحة المحادثة التفاعلية",
+          view: "العرض",
+          chatView: "شكل المحادثة",
+          rawTextView: "النص الخام",
+          width: "العرض",
+          mobileView: "عرض الجوال",
+          fullWidth: "عرض كامل",
+          canvasWidth: "عرض اللوحة",
+          noMessages: "اللوحة فارغة. الصق النص للبدء.",
+          parsedMessages: "تم تحليل {count} رسالة.",
+          cleared: "تم مسح البيانات.",
+          copied: "تم النسخ بنجاح.",
+          copyFailed: "فشل النسخ. يرجى النسخ يدوياً.",
+          downloadStarted: "بدأ التنزيل.",
+          hidden: "(مخفي)",
+          rawSender: "الاسم الخام: {sender}",
+          dragToReorder: "اسحب للترتيب",
+          mainUser: "الأساسي",
+          mainUserHint: "أول شخص يظهر شاته على يمين المعاينة",
+          menuEdit: "تعديل النص",
+          menuDeleteMessage: "حذف الرسالة",
+          menuAnonymizeSender: "إخفاء هوية هذا المرسل",
+          menuHideSender: "إخفاء اسم المرسل",
+          menuHideAllTimestamps: "إخفاء كل التواريخ",
+          menuDeleteTimestamp: "حذف هذا التاريخ",
+          about: "عن الموقع",
+          aboutProject: "عن المشروع",
+          aboutIntro: "منظف ومنسق محادثات واتساب هو أداة تعمل من المتصفح لتنظيف وتنظيم وإخفاء هوية ومعاينة محادثات واتساب المُصدّرة.",
+          aboutFeature1: "تنظيف وتنسيق نص المحادثة المُصدّر",
+          aboutFeature2: "تعديل الرسائل وأسماء المرسلين",
+          aboutFeature3: "إخفاء هوية المشاركين لمشاركة أكثر أماناً",
+          aboutFeature4: "معاينة المحادثة قبل التصدير",
+          aboutFeature5: "نسخ أو تنزيل النتيجة المنظفة",
+          privacyFirst: "الخصوصية أولاً",
+          privacyText: "تتم معالجة بيانات المحادثة محلياً داخل متصفحك ولا يتم رفعها إلى أي خادم.",
+          createdBy: "تم الإنشاء بواسطة",
+          close: "إغلاق",
+        }
+      };
+
+      // 2. Global State & LocalStorage persistence
+      // ملحوظة خصوصية: الدوال دي بتحفظ/تقرأ تفضيلات الواجهة بس (ثيم/لغة/عرض)،
+      // ومش بتلمس محتوى الشات (appState.messages) خالص، وده مش بيتخزن على الجهاز أبداً.
+      // بنحوط كل قراءة وكتابة بـ try/catch عشان لو المتصفح بيمنع localStorage
+      // (وضع التصفح الخاص، إعدادات خصوصية، أو معاينة داخل iframe محمي) الكود يفضل شغال
+      // عادي بدل ما يقف فجأة ويكسر أزرار زي الوضع الداكن/الفاتح.
+      function storageGet(key, fallback) {
+        try {
+          const v = localStorage.getItem(key);
+          return v === null ? fallback : v;
+        } catch (_) {
+          return fallback;
+        }
+      }
+      function storageSet(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (_) { /* التخزين مش متاح - نتجاهل بهدوء، الواجهة تفضل شغالة */ }
+      }
+
+      const appState = {
+        messages: [],
+        aliases: {},
+        senderOrder: [],
+        hiddenSenders: new Set(),
+        preset: storageGet("wc_preset", "enhanced"),
+        showTimestamps: storageGet("wc_timestamps", "true") !== "false",
+        viewMode: storageGet("wc_viewMode", "chat"),
+        canvasWidthPercent: Number(storageGet("wc_widthPercent", "100")) || 100,
+        selectedElement: null,
+        draggingSenderIndex: null,
+        language: storageGet("wc_language", "en"),
+        darkMode: storageGet("wc_dark", "1") !== "0",
+        optionsOpen: storageGet("wc_optionsOpen", "true") !== "false",
+      };
+
+      // Regex patterns
+      const directionalMarks = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+      const spacingMarks = /[\u202F\u00A0]/g;
+      const headerPattern = /^\s*\[([^\]]+)\]\s*([^:]+?):\s*(.*)$/;
+      const systemPatterns = [
+        /^<\s*media omitted\s*>$/i,
+        /^<\s*الملفات محذوفة\s*>$/i,
+        /^<\s*تم حذف هذه الرسالة\s*>$/i,
+        /messages and calls are end-to-end encrypted/i,
+        /الرسائل والمكالمات مشفّرة من طرف إلى طرف/i,
+      ];
+
+      // DOM Elements
+      const rawInput = document.getElementById("rawInput");
+      const parseBtn = document.getElementById("parseBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const optionsAccordion = document.getElementById("optionsAccordion");
+      const presetSelect = document.getElementById("presetSelect");
+      const toggleTimestamp = document.getElementById("toggleTimestamp");
+      const batchAnonBtn = document.getElementById("batchAnonBtn");
+      const resetNamesBtn = document.getElementById("resetNamesBtn");
+      const senderList = document.getElementById("senderList");
+      const chatViewBtn = document.getElementById("chatViewBtn");
+      const rawViewBtn = document.getElementById("rawViewBtn");
+      const mobileWidthBtn = document.getElementById("mobileWidthBtn");
+      const fullWidthBtn = document.getElementById("fullWidthBtn");
+      const widthSlider = document.getElementById("widthSlider");
+      const widthValue = document.getElementById("widthValue");
+      const canvasContainer = document.getElementById("canvasContainer");
+      const chatCanvas = document.getElementById("chatCanvas");
+      const rawTextView = document.getElementById("rawTextView");
+      const contextMenu = document.getElementById("contextMenu");
+      const copyBtn = document.getElementById("copyBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const feedback = document.getElementById("feedback");
+      const languageToggle = document.getElementById("languageToggle");
+      const darkModeToggle = document.getElementById("darkModeToggle");
+      const darkModeText = document.getElementById("darkModeText");
+      const darkModeIcon = document.getElementById("darkModeIcon");
+
+      // Set initial control values
+      presetSelect.value = appState.preset;
+      toggleTimestamp.checked = appState.showTimestamps;
+      widthSlider.value = appState.canvasWidthPercent;
+      optionsAccordion.open = appState.optionsOpen;
+      optionsAccordion.addEventListener("toggle", () => {
+        appState.optionsOpen = optionsAccordion.open;
+        storageSet("wc_optionsOpen", appState.optionsOpen ? "true" : "false");
+      });
+
+      // 3. Core Functions
+      function t(key, vars = {}) {
+        const table = i18n[appState.language] || i18n.en;
+        const template = table[key] || i18n.en[key] || key;
+        return template.replace(/\{(\w+)\}/g, (_, name) => `${vars[name] ?? ""}`);
+      }
+
+      function applyLanguage() {
+        document.documentElement.lang = appState.language;
+        document.documentElement.dir = appState.language === "ar" ? "rtl" : "ltr";
+
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          el.textContent = t(el.getAttribute("data-i18n"));
+        });
+        document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+          el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+        });
+
+        languageToggle.textContent = appState.language === "en" ? "AR" : "EN";
+        darkModeText.textContent = appState.darkMode ? t("lightMode") : t("darkMode");
+        if (!appState.senderOrder.length) senderList.textContent = t("noSenders");
+        
+        renderSenderControls();
+        renderChat();
+        document.dispatchEvent(new CustomEvent("wc-language-changed"));
+      }
+
+      function applyTheme() {
+        const root = document.documentElement;
+        const theme = appState.darkMode ? "dark" : "light";
+        root.classList.toggle("dark", appState.darkMode);
+        root.dataset.theme = theme;
+        root.style.colorScheme = theme;
+        document.body.dataset.theme = theme;
+        document.body.style.colorScheme = theme;
+        darkModeIcon.textContent = appState.darkMode ? "☀" : "☾";
+        darkModeText.textContent = appState.darkMode ? t("lightMode") : t("darkMode");
+      }
+
+      function makeId() {
+        // fallback بسيط لو crypto.randomUUID مش متاحة (سياق غير آمن/متصفح قديم)
+        if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+        return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
+
+      function parseChat(rawText) {
+        const lines = rawText.replace(directionalMarks, "").replace(spacingMarks, " ").replace(/\r/g, "").split("\n");
+        const parsed = [];
+        for (const line of lines) {
+          const header = line.match(headerPattern);
+          if (header) {
+            const timestamp = header[1].trim(), sender = header[2].trim(), text = header[3] || "";
+            if (!isSystemLine(text)) {
+              parsed.push({ id: makeId(), timestamp, sender, text, hideTimestamp: false });
+            }
+          } else if (!isSystemLine(line) && parsed.length > 0) {
+            parsed[parsed.length - 1].text += `\n${line}`;
+          }
+        }
+        return parsed;
+      }
+      
+      function isSystemLine(text) {
+        const compact = text.trim();
+        return systemPatterns.some(pattern => pattern.test(compact));
+      }
+
+      function refreshSenders() {
+        const uniqueSenders = [];
+        const seen = new Set();
+        appState.messages.forEach(m => {
+          if (!seen.has(m.sender)) { seen.add(m.sender); uniqueSenders.push(m.sender); }
+        });
+        const preserved = appState.senderOrder.filter(s => seen.has(s));
+        const newcomers = uniqueSenders.filter(s => !preserved.includes(s));
+        appState.senderOrder = [...preserved, ...newcomers];
+        
+        uniqueSenders.forEach(s => { if (!(s in appState.aliases)) appState.aliases[s] = s; });
+        Object.keys(appState.aliases).forEach(s => { if (!seen.has(s)) delete appState.aliases[s]; });
+        renderSenderControls();
+      }
+
+      function renderSenderControls() {
+        if (!appState.senderOrder.length) {
+          senderList.textContent = t("noSenders");
+          return;
+        }
+
+        senderList.innerHTML = "";
+
+        const moveSender = (from, to) => {
+          if (from === null || from === undefined || to === null || to === undefined || from === to) return;
+          const [moved] = appState.senderOrder.splice(from, 1);
+          appState.senderOrder.splice(to, 0, moved);
+          appState.draggingSenderIndex = null;
+          renderSenderControls();
+          renderChat();
+        };
+
+        appState.senderOrder.forEach((sender, index) => {
+          const row = document.createElement("div");
+          row.className = "sender-row rounded-lg border border-slate-200 p-2 dark:border-[#26382f] dark:bg-[#0a0f0d]";
+          row.draggable = true;
+          row.dataset.senderIndex = String(index);
+
+          const topRow = document.createElement("div");
+          topRow.className = "sender-top-row mb-1 flex items-center gap-2";
+          topRow.setAttribute("title", t("dragToReorder"));
+
+          const handle = document.createElement("span");
+          handle.className = "sender-drag-handle";
+          handle.setAttribute("aria-label", t("dragToReorder"));
+          handle.setAttribute("title", t("dragToReorder"));
+          handle.textContent = "⠿";
+
+          const raw = document.createElement("div");
+          raw.className = "text-xs text-slate-500 dark:text-gray-500";
+          raw.textContent = t("rawSender", { sender });
+
+          topRow.appendChild(handle);
+          topRow.appendChild(raw);
+
+          if (index === 0) {
+            const badge = document.createElement("span");
+            badge.className = "main-user-badge";
+            badge.textContent = t("mainUser");
+            badge.title = t("mainUserHint");
+            topRow.appendChild(badge);
+          }
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = appState.aliases[sender] || sender;
+          input.className = "w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-[#26382f] dark:bg-[#111915] dark:text-gray-200 dark:focus:border-emerald-600";
+
+          input.addEventListener("input", () => {
+            appState.aliases[sender] = input.value || sender;
+            renderChat();
+          });
+
+          row.addEventListener("dragstart", (e) => {
+            appState.draggingSenderIndex = index;
+            row.classList.add("opacity-50");
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", sender);
+            }
+          });
+          row.addEventListener("dragend", () => {
+            appState.draggingSenderIndex = null;
+            row.classList.remove("opacity-50");
+            document.querySelectorAll(".sender-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+          });
+          row.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            row.classList.add("drag-over");
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          });
+          row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+          row.addEventListener("drop", (e) => {
+            e.preventDefault();
+            row.classList.remove("drag-over");
+            moveSender(appState.draggingSenderIndex, index);
+          });
+
+          // The whole top strip is the easy-to-hit drag zone; the visual handle stays unchanged.
+          topRow.draggable = true;
+          topRow.addEventListener("dragstart", (e) => {
+            appState.draggingSenderIndex = index;
+            row.classList.add("opacity-50");
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", sender);
+            }
+          });
+          topRow.addEventListener("dragend", () => {
+            appState.draggingSenderIndex = null;
+            row.classList.remove("opacity-50");
+            document.querySelectorAll(".sender-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+          });
+
+          // Direct drag from the six-dot handle (especially useful on touch screens).
+          // The rest of the row keeps the original native long-press drag behavior.
+          let handlePointerId = null;
+          let handleDragging = false;
+          let handleTargetIndex = null;
+
+          handle.addEventListener("pointerdown", (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            handlePointerId = e.pointerId;
+            handleDragging = false;
+            handleTargetIndex = index;
+            handle.setPointerCapture?.(e.pointerId);
+          });
+
+          handle.addEventListener("pointermove", (e) => {
+            if (handlePointerId !== e.pointerId) return;
+            const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".sender-row");
+            if (!target) return;
+
+            const targetIndex = Number(target.dataset.senderIndex);
+            if (!Number.isFinite(targetIndex)) return;
+
+            if (!handleDragging) {
+              handleDragging = true;
+              row.classList.add("opacity-50");
+              handle.classList.add("is-dragging");
+              document.querySelectorAll(".sender-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+            }
+
+            document.querySelectorAll(".sender-row.drag-over").forEach(el => {
+              if (el !== target) el.classList.remove("drag-over");
+            });
+            if (target !== row) target.classList.add("drag-over");
+            handleTargetIndex = targetIndex;
+          });
+
+          const finishHandleDrag = (e) => {
+            if (handlePointerId !== e.pointerId) return;
+            try { handle.releasePointerCapture?.(e.pointerId); } catch (_) {}
+            if (handleDragging && handleTargetIndex !== null && handleTargetIndex !== index) {
+              moveSender(index, handleTargetIndex);
+            }
+            row.classList.remove("opacity-50");
+            handle.classList.remove("is-dragging");
+            document.querySelectorAll(".sender-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+            handlePointerId = null;
+            handleDragging = false;
+            handleTargetIndex = null;
+          };
+          handle.addEventListener("pointerup", finishHandleDrag);
+          handle.addEventListener("pointercancel", finishHandleDrag);
+
+          row.appendChild(topRow);
+          row.appendChild(input);
+          senderList.appendChild(row);
+        });
+      }
+
+      function buildMessageUI(message, index) {
+        const wrapper = document.createElement("div");
+        const isOutgoing = appState.senderOrder[0] === message.sender;
+        wrapper.className = `mb-4 flex ${isOutgoing ? "justify-end" : "justify-start"}`;
+
+        const bubble = document.createElement("article");
+        // Theme Colors: Light mode standard WhatsApp, Dark mode PasteSave Green/Black
+        bubble.className = "message-bubble " + (isOutgoing
+            ? "outgoing-bubble ml-auto max-w-[85%] rounded-2xl border border-emerald-200 bg-emerald-100 px-3 py-2 text-right shadow-sm dark:border-[#147a54] dark:bg-[#115e41] text-slate-900 dark:text-gray-100"
+            : "incoming-bubble mr-auto max-w-[85%] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm dark:border-[#22332b] dark:bg-[#1a2520] text-slate-900 dark:text-gray-100");
+
+        // Internal flex column for proper content alignment
+        const innerContent = document.createElement("div");
+        innerContent.className = `flex flex-col ${isOutgoing ? "items-end text-right" : "items-start text-left"}`;
+
+        const displaySender = appState.hiddenSenders.has(message.sender) ? "" : (appState.aliases[message.sender] || message.sender);
+        
+        if (displaySender && appState.preset === "enhanced") {
+            const nameEl = document.createElement("div");
+            nameEl.className = `mb-1 text-sm font-semibold cursor-pointer ${isOutgoing ? "text-emerald-800 dark:text-[#52e8ad]" : "text-blue-600 dark:text-[#5fa2e8]"}`;
+            nameEl.textContent = displaySender;
+            nameEl.addEventListener('click', (e) => showContext(e, nameEl, [
+                { label: t("menuAnonymizeSender"), handler: () => { appState.aliases[message.sender] = "User"; refreshSenders(); renderChat(); } },
+                { label: t("menuHideSender"), handler: () => { appState.hiddenSenders.add(message.sender); renderChat(); } }
+            ]));
+            innerContent.appendChild(nameEl);
+        }
+
+        if (appState.showTimestamps && !message.hideTimestamp) {
+            const timeEl = document.createElement("div");
+            timeEl.className = "mb-1 text-[11px] text-slate-500 dark:text-gray-400 cursor-pointer hover:text-slate-700 dark:hover:text-gray-200";
+            timeEl.textContent = `[${message.timestamp}]`;
+            timeEl.addEventListener('click', (e) => showContext(e, timeEl, [
+                { label: t("menuHideAllTimestamps"), handler: () => { appState.showTimestamps = false; toggleTimestamp.checked = false; renderChat(); } },
+                { label: t("menuDeleteTimestamp"), handler: () => { message.hideTimestamp = true; renderChat(); } }
+            ]));
+            innerContent.appendChild(timeEl);
+        }
+
+        const textEl = document.createElement("div");
+        textEl.className = "whitespace-pre-wrap text-[15px] leading-relaxed cursor-text outline-none";
+        textEl.contentEditable = "true";
+        textEl.setAttribute("dir", "auto");
+        if (appState.preset === "normal") {
+             let prefix = "";
+             if (appState.showTimestamps && !message.hideTimestamp) prefix += `[${message.timestamp}] `;
+             if (displaySender && !appState.hiddenSenders.has(message.sender)) prefix += `${displaySender}: `;
+             textEl.textContent = prefix + message.text;
+        } else {
+             textEl.textContent = message.text;
+        }
+
+        // نجبر اللصق يكون نص عادي بس (مش HTML منسّق) عشان نقفل أي احتمال لحقن عناصر غريبة
+        textEl.addEventListener("paste", (e) => {
+          e.preventDefault();
+          const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(document.createTextNode(text));
+            range.collapse(false);
+          }
+          message.text = textEl.textContent.replace(/^\[.*?\]\s*|.+?:\s*/g, '');
+          rawTextView.textContent = getExportText();
+        });
+        textEl.addEventListener("input", () => { message.text = textEl.textContent.replace(/^\[.*?\]\s*|.+?:\s*/g, ''); rawTextView.textContent = getExportText(); });
+        const messageActions = [
+          { label: t("menuDeleteMessage"), handler: () => { appState.messages.splice(index, 1); refreshSenders(); renderChat(); } }
+        ];
+
+        // Editing must keep focus on mobile. A normal tap is reserved exclusively for editing.
+        textEl.addEventListener("dblclick", (e) => showContext(e, textEl, messageActions));
+        textEl.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          showContext(e, textEl, messageActions);
+        });
+
+        let messagePressTimer = null;
+        let touchMoved = false;
+
+        textEl.addEventListener("pointerdown", (e) => {
+          if (e.pointerType !== "touch") return;
+          touchMoved = false;
+
+          // Force the editable element to retain focus after the browser finishes its tap handling.
+          requestAnimationFrame(() => {
+            if (!touchMoved && document.activeElement !== textEl) {
+              textEl.focus({ preventScroll: true });
+            }
+          });
+
+          messagePressTimer = setTimeout(() => {
+            messagePressTimer = null;
+            // Long press opens the menu only if the user is not actively typing.
+            if (document.activeElement !== textEl) {
+              showContext(e, textEl, messageActions);
+            }
+          }, 700);
+        });
+
+        textEl.addEventListener("pointermove", () => {
+          touchMoved = true;
+          if (messagePressTimer) {
+            clearTimeout(messagePressTimer);
+            messagePressTimer = null;
+          }
+        });
+
+        ["pointerup", "pointercancel"].forEach(type => {
+          textEl.addEventListener(type, () => {
+            if (messagePressTimer) {
+              clearTimeout(messagePressTimer);
+              messagePressTimer = null;
+            }
+            if (type === "pointerup") {
+              requestAnimationFrame(() => textEl.focus({ preventScroll: true }));
+            }
+          });
+        });
+
+        // Do not let the document-level menu closer interfere with an active mobile editor.
+        textEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (document.activeElement !== textEl) textEl.focus({ preventScroll: true });
+        });
+
+        innerContent.appendChild(textEl);
+        bubble.appendChild(innerContent);
+        wrapper.appendChild(bubble);
+        return wrapper;
+      }
+
+      function getExportText() {
+        return appState.messages.map(m => {
+          const s = appState.hiddenSenders.has(m.sender) ? "" : (appState.aliases[m.sender] || m.sender);
+          const t = (appState.showTimestamps && !m.hideTimestamp) ? `[${m.timestamp}]` : "";
+          if (appState.preset === "normal") return [t, s ? s+":" : "", m.text].filter(Boolean).join(" ");
+          return [s ? `[${s}]` : "", t, m.text].filter(Boolean).join("\n");
+        }).join("\n\n");
+      }
+
+      function renderChat() {
+        // Never rebuild the chat while a message editor is actively focused.
+        // Mobile keyboards depend on the focused DOM node remaining mounted.
+        const activeEditor = document.activeElement;
+        const editingMessage = activeEditor && activeEditor.matches &&
+          activeEditor.matches('.message-bubble [contenteditable="true"]');
+        if (editingMessage) {
+          rawTextView.textContent = getExportText();
+          return;
+        }
+
+        rawTextView.textContent = getExportText();
+        
+        // Handle Smooth Percentage Slider Update
+        widthSlider.value = appState.canvasWidthPercent;
+        widthValue.textContent = `${appState.canvasWidthPercent}%`;
+        canvasContainer.style.width = window.innerWidth < 768 ? "100%" : `${appState.canvasWidthPercent}%`;
+
+        // View Mode buttons styling
+        const activeBtnClass = "bg-emerald-600 text-white dark:bg-[#147a54]";
+        const inactiveBtnClass = "bg-transparent text-slate-700 hover:bg-slate-200 dark:text-gray-400 dark:hover:bg-[#111915]";
+        
+        chatViewBtn.className = `rounded-md px-3 py-1.5 text-sm font-medium transition ${appState.viewMode === 'chat' ? activeBtnClass : inactiveBtnClass}`;
+        rawViewBtn.className = `rounded-md px-3 py-1.5 text-sm font-medium transition ${appState.viewMode === 'raw' ? activeBtnClass : inactiveBtnClass}`;
+
+        // تحديد خفيف لزرار العرض (Mobile View / Full Width) حسب نسبة العرض الحالية
+        const widthActiveClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300";
+        const widthInactiveClass = "bg-transparent text-slate-600 hover:bg-slate-200 dark:text-gray-400 dark:hover:bg-[#111915]";
+        mobileWidthBtn.className = `rounded-md px-3 py-1.5 text-sm font-medium transition ${appState.canvasWidthPercent === 60 ? widthActiveClass : widthInactiveClass}`;
+        fullWidthBtn.className = `rounded-md px-3 py-1.5 text-sm font-medium transition ${appState.canvasWidthPercent === 100 ? widthActiveClass : widthInactiveClass}`;
+        
+        if (appState.viewMode === "chat") {
+          chatCanvas.classList.remove("hidden"); rawTextView.classList.add("hidden");
+        } else {
+          chatCanvas.classList.add("hidden"); rawTextView.classList.remove("hidden");
+        }
+
+        chatCanvas.innerHTML = "";
+        hideMenu();
+
+        if (!appState.messages.length) {
+          const empty = document.createElement("div");
+          empty.className = "flex h-40 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 dark:border-[#26382f]";
+          empty.innerHTML = `<p class="text-sm text-slate-500 dark:text-gray-500">${t("noMessages")}</p>`;
+          chatCanvas.appendChild(empty);
+          return;
+        }
+
+        appState.messages.forEach((m, i) => chatCanvas.appendChild(buildMessageUI(m, i)));
+      }
+
+      // Context Menu Logic
+      function showContext(e, el, actions) {
+        e.stopPropagation();
+        if (appState.selectedElement) appState.selectedElement.classList.remove("ring-2", "ring-emerald-500");
+        appState.selectedElement = el; el.classList.add("ring-2", "ring-emerald-500");
+        
+        contextMenu.innerHTML = "";
+        actions.forEach(a => {
+          const btn = document.createElement("button");
+          btn.className = "block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-[#26382f]";
+          btn.textContent = a.label;
+          btn.onclick = () => { a.handler(); hideMenu(); };
+          contextMenu.appendChild(btn);
+        });
+        
+        const rect = el.getBoundingClientRect();
+        const hostRect = contextMenu.offsetParent.getBoundingClientRect();
+        contextMenu.style.left = `${rect.left - hostRect.left}px`;
+        contextMenu.style.top = `${rect.bottom - hostRect.top + 5}px`;
+        contextMenu.classList.remove("hidden");
+      }
+      
+      function hideMenu() { contextMenu.classList.add("hidden"); if(appState.selectedElement) appState.selectedElement.classList.remove("ring-2", "ring-emerald-500"); }
+      document.addEventListener("click", () => hideMenu());
+
+      // Auto-Parse on Input & Paste
+      rawInput.addEventListener("input", () => {
+        if (rawInput.value.trim() !== "") {
+            appState.messages = parseChat(rawInput.value);
+            refreshSenders();
+            renderChat();
+        }
+      });
+      
+      parseBtn.addEventListener("click", () => {
+        appState.messages = parseChat(rawInput.value);
+        refreshSenders(); renderChat();
+        feedback.textContent = t("parsedMessages", { count: appState.messages.length });
+      });
+
+      clearBtn.addEventListener("click", () => {
+        rawInput.value = ""; appState.messages = []; appState.aliases = {}; appState.senderOrder = []; appState.hiddenSenders.clear();
+        refreshSenders(); renderChat();
+      });
+
+      // Settings Listeners
+      presetSelect.addEventListener("change", () => { appState.preset = presetSelect.value; storageSet("wc_preset", appState.preset); renderChat(); });
+      toggleTimestamp.addEventListener("change", () => { appState.showTimestamps = toggleTimestamp.checked; storageSet("wc_timestamps", appState.showTimestamps); renderChat(); });
+      chatViewBtn.addEventListener("click", () => { appState.viewMode = "chat"; storageSet("wc_viewMode", "chat"); renderChat(); });
+      rawViewBtn.addEventListener("click", () => { appState.viewMode = "raw"; storageSet("wc_viewMode", "raw"); renderChat(); });
+      
+      widthSlider.addEventListener("input", () => {
+        appState.canvasWidthPercent = Number(widthSlider.value);
+        storageSet("wc_widthPercent", appState.canvasWidthPercent);
+        renderChat();
+      });
+
+      // Quick Width Buttons
+      mobileWidthBtn.addEventListener("click", () => { widthSlider.value = 60; widthSlider.dispatchEvent(new Event('input')); });
+      fullWidthBtn.addEventListener("click", () => { widthSlider.value = 100; widthSlider.dispatchEvent(new Event('input')); });
+
+      batchAnonBtn.addEventListener("click", () => { appState.senderOrder.forEach((s, i) => appState.aliases[s] = `User ${i + 1}`); appState.hiddenSenders.clear(); renderSenderControls(); renderChat(); });
+      resetNamesBtn.addEventListener("click", () => { appState.senderOrder.forEach(s => appState.aliases[s] = s); appState.hiddenSenders.clear(); renderSenderControls(); renderChat(); });
+
+      languageToggle.addEventListener("click", () => {
+        appState.language = appState.language === "en" ? "ar" : "en";
+        applyLanguage();
+        storageSet("wc_language", appState.language);
+      });
+      darkModeToggle.addEventListener("click", () => {
+        appState.darkMode = !appState.darkMode;
+        storageSet("wc_dark", appState.darkMode ? "1" : "0");
+        applyTheme();
+      });
+
+      copyBtn.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(getExportText()); feedback.textContent = t("copied"); } 
+        catch (e) { feedback.textContent = t("copyFailed"); }
+      });
+      downloadBtn.addEventListener("click", () => {
+        const blobUrl = URL.createObjectURL(new Blob([getExportText()], { type: "text/plain;charset=utf-8" }));
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = "cleaned-chat.txt";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+        feedback.textContent = t("downloadStarted");
+      });
+
+      // Mobile editor viewport handling:
+      // The editor lives inside #chatCanvas, which is its own scroll container.
+      // Scrolling only window was therefore not enough on mobile.
+      let mobileEditingElement = null;
+      let mobileEditorTimers = [];
+
+      function isMobileEditor(el) {
+        return !!(el && el.matches && el.matches('.message-bubble [contenteditable="true"]'));
+      }
+
+      function isMobileViewport() {
+        return window.innerWidth <= 768 || !window.matchMedia('(pointer: fine)').matches;
+      }
+
+      function clearMobileEditorTimers() {
+        mobileEditorTimers.forEach(clearTimeout);
+        mobileEditorTimers = [];
+      }
+
+      function getScrollParent(el) {
+        let parent = el.parentElement;
+        while (parent && parent !== document.body) {
+          const style = getComputedStyle(parent);
+          if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) {
+            return parent;
+          }
+          parent = parent.parentElement;
+        }
+        return document.scrollingElement;
+      }
+
+      function revealEditorNaturally() {
+        const el = mobileEditingElement;
+        if (!el || document.activeElement !== el || !isMobileViewport()) return;
+
+        // First use the browser's native "nearest" behavior.
+        // Unlike block:center, this does not jump the message into the middle
+        // or show several unnecessary messages around it.
+        el.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'auto'
+        });
+
+        const vv = window.visualViewport;
+        if (!vv) return;
+
+        // Then fix the remaining case where the element is inside the chat's
+        // own scroll area and still sits behind the software keyboard.
+        const parent = getScrollParent(el);
+        const rect = el.getBoundingClientRect();
+        const safeTop = vv.offsetTop + 12;
+        const safeBottom = vv.offsetTop + vv.height - 18;
+
+        let delta = 0;
+        if (rect.bottom > safeBottom) {
+          delta = rect.bottom - safeBottom;
+        } else if (rect.top < safeTop) {
+          delta = rect.top - safeTop;
+        }
+
+        if (Math.abs(delta) > 1) {
+          if (parent && parent !== document.scrollingElement && parent !== document.body) {
+            parent.scrollTop += delta;
+          } else {
+            window.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+          }
+        }
+      }
+
+      function scheduleMobileEditorChecks() {
+        clearMobileEditorTimers();
+
+        // Android keyboards animate and report their final visual viewport
+        // slightly after focus. These are corrections, not repeated animations.
+        [120, 280, 520].forEach(delay => {
+          mobileEditorTimers.push(setTimeout(revealEditorNaturally, delay));
+        });
+      }
+
+      document.addEventListener('focusin', (event) => {
+        if (!isMobileEditor(event.target)) return;
+        mobileEditingElement = event.target;
+        scheduleMobileEditorChecks();
+      }, true);
+
+      document.addEventListener('focusout', (event) => {
+        if (event.target === mobileEditingElement) {
+          clearMobileEditorTimers();
+          mobileEditingElement = null;
+        }
+      }, true);
+
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+          if (mobileEditingElement) scheduleMobileEditorChecks();
+        });
+      }
+
+      // Important mobile fix:
+      // Opening the software keyboard changes viewport height and can fire `resize`.
+      // Re-rendering here used to recreate every message bubble, which immediately
+      // destroyed the focused contenteditable and closed the keyboard.
+      let lastRenderedViewportWidth = window.innerWidth;
+      window.addEventListener("resize", () => {
+        const currentWidth = window.innerWidth;
+        if (currentWidth === lastRenderedViewportWidth) return;
+        lastRenderedViewportWidth = currentWidth;
+        renderChat();
+      });
+
+      // Init
+      applyLanguage();
+      applyTheme();
+    </script>
+  
+<div id="aboutOverlay" class="about-overlay" aria-hidden="true">
+  <section class="about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="about-modal-head">
+      <div>
+        <h2 id="aboutTitle" class="about-modal-title" data-i18n="aboutProject">About This Project</h2>
+      </div>
+      <button id="aboutClose" class="about-close" type="button" aria-label="Close" data-i18n-aria="close">×</button>
+    </div>
+
+    <p class="about-intro" data-i18n="aboutIntro">WhatsApp Chat Cleaner &amp; Formatter is a browser-based tool designed to clean, organize, anonymize, and preview exported WhatsApp conversations.</p>
+
+    <ul class="about-list">
+      <li data-i18n="aboutFeature1">Clean and format exported chat text</li>
+      <li data-i18n="aboutFeature2">Edit messages and sender names</li>
+      <li data-i18n="aboutFeature3">Anonymize participants for safer sharing</li>
+      <li data-i18n="aboutFeature4">Preview conversations before exporting</li>
+      <li data-i18n="aboutFeature5">Copy or download the cleaned result</li>
+    </ul>
+
+    <div class="about-privacy">
+      <strong data-i18n="privacyFirst">Privacy First</strong>
+      <p data-i18n="privacyText">Your chat data is processed locally in your browser and is not uploaded to a server.</p>
+    </div>
+
+    <div class="about-credit">
+      <div>
+        <div class="about-credit-label" data-i18n="createdBy">Created by</div>
+        <div class="about-name">EZZEDLEEN</div>
+      </div>
+      <a class="github-link" href="https://github.com/Ezzeldeen-Sec" target="_blank" rel="noopener noreferrer">
+        GitHub · Ezzeldeen-Sec ↗
+      </a>
+    </div>
+  </section>
+</div>
+
+<script>
+
+// About modal
+const aboutBtn = document.getElementById('aboutBtn');
+const aboutOverlay = document.getElementById('aboutOverlay');
+const aboutClose = document.getElementById('aboutClose');
+
+function updateAboutI18n() {
+  if (typeof t !== 'function') return;
+  document.querySelectorAll('#aboutOverlay [data-i18n]').forEach((el) => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('#aboutOverlay [data-i18n-aria]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+  if (aboutBtn) {
+    const label = t('about');
+    aboutBtn.setAttribute('aria-label', label);
+    aboutBtn.setAttribute('title', label);
+  }
+}
+
+document.addEventListener('wc-language-changed', updateAboutI18n);
+updateAboutI18n();
+
+function openAboutModal() {
+  if (!aboutOverlay) return;
+  aboutOverlay.classList.add('is-open');
+  aboutOverlay.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => aboutClose && aboutClose.focus(), 0);
+}
+
+function closeAboutModal() {
+  if (!aboutOverlay) return;
+  aboutOverlay.classList.remove('is-open');
+  aboutOverlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  aboutBtn && aboutBtn.focus();
+}
+
+aboutBtn && aboutBtn.addEventListener('click', openAboutModal);
+aboutClose && aboutClose.addEventListener('click', closeAboutModal);
+aboutOverlay && aboutOverlay.addEventListener('click', (event) => {
+  if (event.target === aboutOverlay) closeAboutModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && aboutOverlay && aboutOverlay.classList.contains('is-open')) {
+    closeAboutModal();
+  }
+});
+
+</script>
+</body>
+</html>
